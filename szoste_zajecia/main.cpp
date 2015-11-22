@@ -7,7 +7,7 @@
 
 
 using std::async;
-using std::atomic_int;
+using std::atomic_uint;
 using std::cout;
 using std::endl;
 using std::future;
@@ -16,26 +16,28 @@ using std::mutex;
 using std::thread;
 using std::vector;
 
+typedef unsigned uint;
+
 
 mutex mtx;
-int pcounter_wild;
-int pcounter_mutexed;
-int pcounter_guarded;
-atomic_int pcounter_atomic(0); // same as `atomic<int>`
+uint pcounter_wild;
+uint pcounter_mutexed;
+uint pcounter_guarded;
+atomic_uint pcounter_atomic(0); // same as `atomic<uint>`
 
-const unsigned method = 2;
+const unsigned method = 5;
 
-int count_primes_serial(int p_min, int p_max);
-void count_primes_threaded_wild(int p_min, int p_max);
-void count_primes_threaded_mutexed(int p_min, int p_max);
-void count_primes_threaded_guarded_balanced(int p_min, int p_max, int thId, int thNum);
-void count_primes_threaded_atomic_balanced(int p_min, int p_max, int thId, int thNum);
-int count_primes_async_balanced(int p_min, int p_max, int thId, int thNum);
+uint count_primes_serial(uint p_min, uint p_max);
+void count_primes_threaded_wild(uint p_min, uint p_max);
+void count_primes_threaded_mutexed(uint p_min, uint p_max);
+void count_primes_threaded_guarded_balanced(uint p_min, uint p_max, uint thId, uint thNum);
+void count_primes_threaded_atomic_balanced(uint p_min, uint p_max, uint thId, uint thNum);
+uint count_primes_async_balanced(uint p_min, uint p_max, uint thId, uint thNum);
 
 
 int main(void)
 {
-    int p_min = 3, p_max = 1000000;
+    uint p_min = 0, p_max = 1000000;
     int start = time(NULL);
 
     switch (method) {
@@ -45,7 +47,7 @@ int main(void)
         break;
     case 2: {
         cout << "parallel with no data race protection\n";
-        int s = (p_max - p_min) / 4;
+        uint s = (p_max - p_min) / 4;
         vector<thread> vec;
         vec.emplace_back(thread(count_primes_threaded_wild, p_min, 1*s));
         vec.emplace_back(thread(count_primes_threaded_wild, 1*s+1, 2*s));
@@ -89,8 +91,8 @@ int main(void)
     }
     case 6: {
         cout << "parallel with thread-local variable to global sum (load balanced)\n";
-        int pcounter_async = 0;
-        vector< future<int> > vec;
+        uint pcounter_async = 0;
+        vector< future<uint> > vec;
         for (auto i : {0, 1, 2, 3}) {
             vec.emplace_back(async(std::launch::async, count_primes_async_balanced, p_min, p_max, i, 4));
         }
@@ -108,9 +110,9 @@ int main(void)
 }
 
 
-int count_primes_serial(int p_min, int p_max)
+uint count_primes_serial(uint p_min, uint p_max)
 {
-    int pcounter = 0;
+    uint pcounter = 0;
     if (p_min < 3) {
         pcounter++;
         p_min = 3;
@@ -119,7 +121,7 @@ int count_primes_serial(int p_min, int p_max)
     }
 
     for (; p_min <= p_max; p_min += 2) {
-        for (int i = 3; i <= p_min / 2; i += 2) {
+        for (uint i = 3; i <= p_min / 2; i += 2) {
             if (p_min % i == 0)
                 goto not_prime;
         }
@@ -130,7 +132,7 @@ not_prime:;
 }
 
 
-void count_primes_threaded_wild(int p_min, int p_max)
+void count_primes_threaded_wild(uint p_min, uint p_max)
 {
     if (p_min < 3) {
         pcounter_wild++;
@@ -140,7 +142,7 @@ void count_primes_threaded_wild(int p_min, int p_max)
     }
 
     for (; p_min <= p_max; p_min += 2) {
-        for (int i = 3; i <= p_min / 2; i += 2) {
+        for (uint i = 3; i <= p_min / 2; i += 2) {
             if (p_min % i == 0)
                 goto not_prime;
         }
@@ -150,7 +152,7 @@ not_prime:;
 }
 
 
-void count_primes_threaded_mutexed(int p_min, int p_max)
+void count_primes_threaded_mutexed(uint p_min, uint p_max)
 {
     if (p_min < 3) {
         mtx.lock();
@@ -162,7 +164,7 @@ void count_primes_threaded_mutexed(int p_min, int p_max)
     }
 
     for (; p_min <= p_max; p_min += 2) {
-        for (int i = 3; i <= p_min / 2; i += 2) {
+        for (uint i = 3; i <= p_min / 2; i += 2) {
             if (p_min % i == 0)
                 goto not_prime;
         }
@@ -174,22 +176,23 @@ not_prime:;
 }
 
 
-void count_primes_threaded_guarded_balanced(int p_min, int p_max, int thId, int thNum)
+void count_primes_threaded_guarded_balanced(uint p_min, uint p_max, uint thId, uint thNum)
 {
-    if (p_min < 3) {
-        {
-        lock_guard<mutex> lg(mtx);
-        pcounter_guarded++;
-        }
-        p_min = 3;
-    } else if (p_min % 2 == 0) {
-        p_min++;
-    }
-
     p_min += thId * 2;
 
+    if (2 == p_min) {
+        lock_guard<mutex> lg(mtx);
+        pcounter_guarded++;
+    }
+    if (p_min % 2 == 0) {
+        p_min++;
+    }
+    if (1 == p_min) {
+        p_min += 2 * thNum;
+    }
+
     for (; p_min <= p_max; p_min += 2 * thNum) {
-        for (int i = 3; i <= p_min / 2; i += 2) {
+        for (uint i = 3; i <= p_min / 2; i += 2) {
             if (p_min % i == 0)
                 goto not_prime;
         }
@@ -202,19 +205,22 @@ not_prime:;
 }
 
 
-void count_primes_threaded_atomic_balanced(int p_min, int p_max, int thId, int thNum)
+void count_primes_threaded_atomic_balanced(uint p_min, uint p_max, uint thId, uint thNum)
 {
-    if (p_min < 3) {
-        pcounter_atomic++;
-        p_min = 3;
-    } else if (p_min % 2 == 0) {
-        p_min++;
-    }
-
     p_min += thId * 2;
 
+    if (2 == p_min) {
+        pcounter_atomic++;
+    }
+    if (p_min % 2 == 0) {
+        p_min++;
+    }
+    if (1 == p_min) {
+        p_min += 2 * thNum;
+    }
+
     for (; p_min <= p_max; p_min += 2 * thNum) {
-        for (int i = 3; i <= p_min / 2; i += 2) {
+        for (uint i = 3; i <= p_min / 2; i += 2) {
             if (p_min % i == 0)
                 goto not_prime;
         }
@@ -224,20 +230,23 @@ not_prime:;
 }
 
 
-int count_primes_async_balanced(int p_min, int p_max, int thId, int thNum)
+uint count_primes_async_balanced(uint p_min, uint p_max, uint thId, uint thNum)
 {
-    int pcounter = 0;
-    if (p_min < 3) {
+    uint pcounter = 0;
+    p_min += thId * 2;
+
+    if (2 == p_min) {
         pcounter++;
-        p_min = 3;
-    } else if (p_min % 2 == 0) {
+    }
+    if (p_min % 2 == 0) {
         p_min++;
     }
-
-    p_min += thId * 2;
+    if (1 == p_min) {
+        p_min += 2 * thNum;
+    }
 
     for (; p_min <= p_max; p_min += 2 * thNum) {
-        for (int i = 3; i <= p_min / 2; i += 2) {
+        for (uint i = 3; i <= p_min / 2; i += 2) {
             if (p_min % i == 0)
                 goto not_prime;
         }
